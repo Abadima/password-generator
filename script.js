@@ -1,169 +1,148 @@
-const sliderProps = {
-	fill: "#8D00FF",
-	background: "rgba(255, 255, 255, 0.214)",
+const CHARSETS = {
+	lowercase: "abcdefghijklmnopqrstuvwxyz",
+	number: "0123456789",
+	uppercase: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
 };
 
-const slider = document.querySelector(".range__slider");
-const sliderValue = document.querySelector(".length__title");
-
-// Update the slider fill and label as the user slides around
-slider.querySelector("input").addEventListener("input", event => {
-	sliderValue.setAttribute("data-length", event.target.value);
-	applyFill(event.target);
-});
-applyFill(slider.querySelector("input"));
-
-// Properly set the slider fill and label when the page loads
-function applyFill(slider) {
-	const percentage = (100 * (slider.value - slider.min)) / (slider.max - slider.min);
-	slider.style.background = `linear-gradient(90deg, ${sliderProps.fill} ${percentage}%, ${sliderProps.background} ${percentage}%)`;
-	sliderValue.setAttribute("data-length", slider.value);
-}
-
-// math.random() is not very secure
-function getRandomInt(min, max) {
-	const range = max - min + 1;
-	const randomBuffer = new Uint32Array(1);
-	window.crypto.getRandomValues(randomBuffer);
-	return min + (randomBuffer[0] % range);
-}
-
-// Get a random lowercase letter, a-z
-function getRandomLower() {
-	return String.fromCharCode(getRandomInt(97, 122));
-}
-
-// Get a random uppercase letter, A-Z
-function getRandomUpper() {
-	return String.fromCharCode(getRandomInt(65, 90));
-}
-
-// Get a random digit, 0-9
-function getRandomNumber() {
-	return String.fromCharCode(getRandomInt(48, 57));
-}
-
-// Get random symbol (should be compatible for most websites, I know some sites don't allow certain symbols)
-function getRandomSymbol() {
-	const symbols = '!@#$%^&*()_+';
-	return symbols[getRandomInt(0, symbols.length - 1)];
-}
-
-const randomFunc = {
-	lower: getRandomLower,
-	upper: getRandomUpper,
-	number: getRandomNumber,
-	symbol: getRandomSymbol,
+// Modes are exclusive, so symbols never count as two required classes.
+const SYMBOLS = {
+	all: "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+	common: "!@#$%^&*()-_=+",
+	off: "",
 };
 
-// Grab all the DOM elements we care about
-const resultBox = document.getElementById("result");
+const MAX_LENGTH = 1024;
+
+// Rejection sampling avoids modulo bias. No Math.random fallback, by design.
+function randomIndex(max) {
+	const limit = 2 ** 32 - (2 ** 32 % max);
+	const value = new Uint32Array(1);
+	do {
+		crypto.getRandomValues(value);
+	} while (value[0] >= limit);
+	return value[0] % max;
+}
+
+// Rejection keeps all valid passwords equally likely. Invalid input throws RangeError.
+function generatePassword(length, options) {
+	if (options === null || typeof options !== "object") throw new RangeError("Invalid password options");
+	const mode = options.symbols ?? "off";
+	if (typeof mode !== "string" || !Object.hasOwn(SYMBOLS, mode)) throw new RangeError("Invalid symbol mode");
+
+	const sets = Object.keys(CHARSETS)
+		.filter(name => options[name] === true)
+		.map(name => CHARSETS[name]);
+	if (SYMBOLS[mode]) sets.push(SYMBOLS[mode]);
+
+	if (!sets.length || !Number.isSafeInteger(length) || length < sets.length || length > MAX_LENGTH) {
+		throw new RangeError("Invalid password options");
+	}
+
+	const alphabet = sets.join("");
+	const indices = new Uint8Array(length);
+	let password;
+
+	try {
+		do {
+			for (let i = 0; i < length; i++) {
+				indices[i] = randomIndex(alphabet.length);
+			}
+			password = Array.from(indices, idx => alphabet[idx]).join("");
+		} while (!sets.every(set => [...set].some(char => password.includes(char))));
+	} finally {
+		// Best effort: JS strings cannot be wiped.
+		indices.fill(0);
+	}
+	return password;
+}
+
+const boxes = [...document.querySelectorAll(".setting input")];
+const copyButton = document.getElementById("copy");
+const lengthLabel = document.querySelector(".length__title");
 const lengthSlider = document.getElementById("slider");
-const uppercaseCheckbox = document.getElementById("uppercase");
-const lowercaseCheckbox = document.getElementById("lowercase");
-const numberCheckbox = document.getElementById("number");
-const symbolCheckbox = document.getElementById("symbol");
-const generateButton = document.getElementById("generate");
-const resultContainer = document.querySelector(".result");
-const copyInfoText = document.querySelector(".result__info.right");
-const copiedInfoText = document.querySelector(".result__info.left");
+const statusText = document.getElementById("status");
+const symbolRadios = [...document.querySelectorAll(".symbols input")];
 
-let generatedPassword = false;
-let clearTimeoutId = null;
+let password = "";
+// Lets a slow copy detect that a newer password replaced it.
+let generation = 0;
 
-// When you click "Generate"
-generateButton.addEventListener("click", () => {
-	const length = +lengthSlider.value;
-	const hasLower = lowercaseCheckbox.checked;
-	const hasUpper = uppercaseCheckbox.checked;
-	const hasNumber = numberCheckbox.checked;
-	const hasSymbol = symbolCheckbox.checked;
-	generatedPassword = generatePassword(length, hasLower, hasUpper, hasNumber, hasSymbol);
-	resultBox.innerText = "CLICK ME!";
-	copyInfoText.style.transform = "translateY(200%)";
-	copyInfoText.style.opacity = "0";
-	copiedInfoText.style.transform = "translateY(0%)";
-	copiedInfoText.style.opacity = "0";
-	if (clearTimeoutId) {
-		clearTimeout(clearTimeoutId);
-		clearTimeoutId = null;
+function show(message) {
+	copyButton.textContent = statusText.textContent = message;
+}
+
+function updateLength() {
+	lengthLabel.dataset.length = lengthSlider.value;
+	lengthSlider.style.setProperty("--fill", (lengthSlider.value - lengthSlider.min) / (lengthSlider.max - lengthSlider.min));
+}
+
+lengthSlider.addEventListener("input", updateLength);
+updateLength();
+
+document.getElementById("generate").addEventListener("click", () => {
+	password = "";
+	generation++;
+
+	if (!window.isSecureContext) {
+		return show("Secure context required (HTTPS/localhost)");
+	}
+
+	const options = Object.fromEntries(boxes.map(box => [box.id, box.checked]));
+	options.symbols = symbolRadios.find(radio => radio.checked).value;
+	if (!Object.keys(CHARSETS).some(name => options[name]) && options.symbols === "off") {
+		return show("Select at least one character type");
+	}
+
+	try {
+		password = generatePassword(+lengthSlider.value, options);
+		show("click to copy");
+	} catch (error) {
+		show(error instanceof RangeError ? "Invalid password settings" : "Secure random generator unavailable");
 	}
 });
 
-// Copy password to clipboard
-document.addEventListener('DOMContentLoaded', function () {
-	const copyArea = document.getElementById('copy-area');
-	const result = document.getElementById('result');
-	if (copyArea && result) {
-		copyArea.addEventListener('click', function () {
-			if (generatedPassword) {
-				navigator.clipboard.writeText(generatedPassword);
-				result.innerText = "COPIED NEW PASSWORD";
-				if (clearTimeoutId) {
-					clearTimeout(clearTimeoutId);
-					clearTimeoutId = null;
-				}
-				// Reset the result text after 5 seconds
-				generatedPassword = false;
-				clearTimeoutId = setTimeout(() => {
-					result.innerText = "";
-					lengthSlider.value = lengthSlider.min;
-					sliderValue.setAttribute("data-length", lengthSlider.value);
-					applyFill(slider.querySelector("input"));
-				}, 2000);
-			}
-		});
-		copyArea.addEventListener('keydown', function (e) {
-			if (e.key === 'Enter' || e.key === ' ') {
-				e.preventDefault();
-				copyArea.click();
-			}
-		});
+copyButton.addEventListener("click", async () => {
+	const copied = password;
+	const started = generation;
+	if (!copied) return show("Generate a password first");
+
+	try {
+		await navigator.clipboard.writeText(copied);
+	} catch {
+		if (started === generation) show("Copy failed, click to retry");
+		return;
 	}
+
+	if (started !== generation) return;
+	password = "";
+	show("Copied new password");
 });
 
-function generatePassword(length, lower, upper, number, symbol) {
-	const typesArr = [
-		{ lower }, { upper }, { number }, { symbol }
-	].filter(item => Object.values(item)[0]);
-	const typesCount = typesArr.length;
-	if (typesCount === 0) return "";
+const symbolSwitch = document.querySelector(".switch3");
+let dragStart = null;
+let dragged = false;
 
-	let passwordChars = [];
-
-	// Make sure we include at least one of each selected type
-	typesArr.forEach(type => {
-		const funcName = Object.keys(type)[0];
-		passwordChars.push(randomFunc[funcName]());
+if (symbolSwitch) {
+	symbolSwitch.addEventListener("pointerdown", event => {
+		dragStart = event.clientX;
+		dragged = false;
+		symbolSwitch.setPointerCapture(event.pointerId);
 	});
 
-	// Fill the rest with random picks from the selected types
-	for (let i = passwordChars.length; i < length; i++) {
-		const randType = typesArr[getRandomInt(0, typesCount - 1)];
-		const funcName = Object.keys(randType)[0];
-		passwordChars.push(randomFunc[funcName]());
-	}
+	symbolSwitch.addEventListener("pointermove", event => {
+		if (dragStart === null || (Math.abs(event.clientX - dragStart) < 6 && !dragged)) return;
+		dragged = true;
+		const { left, width } = symbolSwitch.getBoundingClientRect();
+		const index = Math.min(2, Math.max(0, Math.round(((event.clientX - left - 14) / (width - 28)) * 2)));
+		if (symbolRadios[index]) symbolRadios[index].checked = true;
+	});
 
-	// Shuffle for extra randomness—no predictable patterns here!
-	for (let i = passwordChars.length - 1; i > 0; i--) {
-		const j = getRandomInt(0, i);
-		[passwordChars[i], passwordChars[j]] = [passwordChars[j], passwordChars[i]];
-	}
+	symbolSwitch.addEventListener("pointerup", () => (dragStart = null));
 
-	return passwordChars.join('');
+	document.querySelector(".symbols")?.addEventListener("click", event => {
+		if (dragged || event.target.closest("input")) return void (dragged = false);
+		const currentIndex = symbolRadios.findIndex(radio => radio.checked);
+		const nextIndex = (currentIndex + 1) % symbolRadios.length;
+		if (symbolRadios[nextIndex]) symbolRadios[nextIndex].checked = true;
+	});
 }
-
-// Don't let the user uncheck all the boxes—at least one type must stay checked!
-function disableOnlyCheckbox() {
-	let totalChecked = [uppercaseCheckbox, lowercaseCheckbox, numberCheckbox, symbolCheckbox].filter(box => box.checked)
-	totalChecked.forEach(box => {
-		box.disabled = totalChecked.length === 1;
-	})
-}
-
-// Listen for clicks on all the checkboxes to enforce the rule above
-[uppercaseCheckbox, lowercaseCheckbox, numberCheckbox, symbolCheckbox].forEach(box => {
-	box.addEventListener('click', () => {
-		disableOnlyCheckbox()
-	})
-})

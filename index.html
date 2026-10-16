@@ -4,7 +4,7 @@
 <!--
     MIT License
 
-    Copyright (c) 2025 Abadima
+    Copyright (c) 2025-2027 Abadima
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -27,43 +27,35 @@
 
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; base-uri 'none'; font-src 'self'; form-action 'none'; img-src 'self'; script-src 'self'; style-src 'self'; require-trusted-types-for 'script'; trusted-types 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <meta http-equiv="Cache-control" content="no-store" />
-    <meta http-equiv="Cache-control" content="no-cache" />
-    <meta http-equiv="x-content-type-options" content="nosniff" />
 
     <meta name="title" content="Abadima's Password Generator" />
-    <link rel="icon" href="https://i.ibb.co/989TszT/hazel-circle.webp" type="image/x-icon">
+    <link rel="icon" href="favicon.webp" type="image/webp" />
 
-    <meta name="og:image" content="https://i.ibb.co/7KstV2f/hazel-pfp.webp" />
+    <meta property="og:image" content="https://pass.abadima.dev/assets/aihoshino.webp" />
     <meta name="description"
-        content="Simply create unique passwords... That's all there is to it! So why not give it a shot?" />
+        content="Generate strong, random passwords with my free online password generator. Private by design, with secure generation entirely in your browser and no data sent to servers." />
 
     <title>Password Generator</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Baloo">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
 </head>
 
 <body>
-    <div class="container">
+    <main class="container">
         <h1 class="title">Password Generator</h1>
 
-        <div class="result" id="copy-area" tabindex="0" role="button" aria-label="Copy password to clipboard">
-            <div class="result__title field-title">Generated Password</div>
-            <div class="result__info right" aria-live="assertive" aria-atomic="true">COPY</div>
-            <div class="result__info left" aria-live="assertive" aria-atomic="true">Copied :D</div>
-            <div class="result__viewbox" id="result" aria-labelledby="password-label"></div>
+        <div class="field-title" id="result-title">Generated Password</div>
+        <button class="result" id="copy" type="button" aria-labelledby="result-title copy"></button>
+
+        <label class="field-title length__title" for="slider">Password Length</label>
+        <div class="range__slider">
+            <input id="slider" type="range" min="8" max="256" value="16">
         </div>
 
-        <div class="length range__slider" data-min="MIN" data-max="MAX">
-            <div class="length__title field-title" data-length='0' id="password-label">Password Length:</div>
-            <input id="slider" type="range" min="8" max="512" value="8" aria-labelledby="password-label">
-        </div>
-
-        <div class="settings">
-            <h2 class="settings__title field-title">Settings</h2>
+        <h2 class="field-title" id="settings-title">Settings</h2>
+        <div class="settings" role="group" aria-labelledby="settings-title">
             <div class="setting">
                 <input type="checkbox" id="uppercase" checked />
                 <label for="uppercase">Uppercase Letters</label>
@@ -76,36 +68,27 @@
                 <input type="checkbox" id="number" checked />
                 <label for="number">Numbers</label>
             </div>
-            <div class="setting">
-                <input type="checkbox" id="symbol" />
-                <label for="symbol">Symbols</label>
+            <div class="symbols" role="radiogroup" aria-labelledby="symbols-label">
+                <span id="symbols-label">Symbols</span>
+                <div class="switch3" title="Tap to cycle or drag: off, common (14 symbols), all (32 symbols)">
+                    <input type="radio" name="symbols" id="symbolOff" value="off" aria-label="Off" checked />
+                    <input type="radio" name="symbols" id="symbol" value="common" aria-label="Common" />
+                    <input type="radio" name="symbols" id="symbolAll" value="all" aria-label="All" />
+                    <span class="track"></span>
+                </div>
             </div>
         </div>
 
-        <button class="btn generate" id="generate">Generate Password</button>
-    </div>
+        <button class="btn generate" id="generate" type="button">Generate Password</button>
+        <p class="visually-hidden" id="status" role="status"></p>
+    </main>
+
+    <footer class="footer">
+        Made with ♥ by <a href="https://github.com/Abadima/password-generator" rel="noreferrer"
+            aria-label="Abadima, source code on GitHub">Abadima</a>
+    </footer>
 
     <script src="script.js"></script>
-    <script>
-        function setTheme() {
-            const currentTheme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-            document.documentElement.setAttribute("data-theme", currentTheme);
-
-            const existingThemes = document.querySelectorAll("link[data-prism-theme]");
-            existingThemes.forEach(theme => theme.remove());
-
-
-            const prismThemeLink = document.createElement("link");
-            prismThemeLink.rel = "stylesheet";
-            prismThemeLink.href = `https://cdnjs.cloudflare.com/ajax/libs/prism-themes/1.9.0/prism-${currentTheme === "dark" ? "one-dark" : "one-light"}.min.css`;
-            prismThemeLink.setAttribute("data-prism-theme", currentTheme);
-            document.head.appendChild(prismThemeLink);
-
-        }
-
-        setTheme();
-        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", setTheme);
-    </script>
 </body>
 
 </html>
